@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20250929
-#UPDATED: 20251002
+#UPDATED: 20251010
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE ELSA 2002-2019 wave (1-9) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -26,7 +26,7 @@
 
 
 #DATA PREPARATION
-#1. 
+#1. List of included variables  
 ######################################################  
 ###################################################### 
 #INSTALL AND LOAD LIBRARY
@@ -50,11 +50,8 @@ pacman::p_load(Hmisc, #attach labels to variables
 #1. Participation of individuals across waves (using harmonized data)
 ######################################################
 #Load harmonized ELSA data
-setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-tab/tab')
-helsa <- read_tsv("h_elsa_g3.tab", 
-                 col_names = TRUE,
-                 na = c("", "NA", "NULL"),
-                 trim_ws = TRUE)
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-stata/stata/stata13_se')
+helsa <- read_dta("h_elsa_g3.dta")
 
 ##Wave 1
 #The total number of individual #12099
@@ -236,11 +233,8 @@ elsa_10_sp <- elsa10 %>% add_count(idahhw10) %>%      # Add count column
 
 ##Wave 11
 #Load data
-setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-tab/tab')
-elsa11 <- read_tsv("wave_11_elsa_data_eul_v1.tab", 
-                   col_names = TRUE,
-                   na = c("", "NA", "NULL"),
-                   trim_ws = TRUE)
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-stata/stata/stata13_se')
+elsa11 <- read_dta("wave_11_elsa_data_eul_v1.dta")
 
 #The total number of individual #7842
 length(table(elsa11$idauniq))
@@ -250,4 +244,57 @@ elsa_11_sp <- elsa11 %>% add_count(idahhw11) %>%      # Add count column
   distinct(idahhw11) %>%       # Get unique categories
   summarise(unique_count = n())
 ######################################################
+######################################################
+#DATA PREPARATION
+#1. List of included variables  
+###################################################### 
+#1. List of included variables  
+###################################################### 
+#Load data and select relevant variables
+#Load harmonized ELSA data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-stata/stata/stata13_se')
+helsa <- read_dta("h_elsa_g3.dta") %>% select(1, 5:13, 23:31, 41:63, 78:113, 142:159, 215:223, 296:313, 344:361, 396:443, 462:501, 522:549, 604:621, 694:711, 730:739, 750, 753:782, 1335:1388, 1569:1622, 1767:1820, 2199:2522, 2555:2860, 2915:2932, 2969:3040, 3045:3104, 3115:3194, 3267:3322, 3699:3786, 3803:3856, 4239:4256, 4846:4899, 4936:4998, 5071:5187, 5324:5341, 5533:5550, 5726:5761, 5780:5815, 6052:6069, 6204:6239, 6258:6275, 7198:7213, 8812:8821, 8832:8841, 8872:8881, 8972:9011, 9418:9453)
+
+# Check if labels exist as attributes
+var_info <- sapply(helsa, function(x) {
+  label <- attr(x, "label")
+  ifelse(is.null(label), "", label)
+})
+
+# Extract value labels from attributes
+val_info <- sapply(helsa, function(x) {
+  labels <- attr(x, "labels")
+  if(!is.null(labels)) {
+    # Format as "1=Label1; 2=Label2; ..."
+    paste(paste(labels, "=", names(labels)), collapse = "; ")
+  } else {
+    ""
+  }
+})
+
+#Create a detailed table
+helsa_variable_table <- data.frame(
+  Variable = names(helsa),
+  Label = sapply(var_info, function(x) ifelse(is.null(x), "", x)),
+  Type = sapply(helsa, function(x) paste(class(x), collapse = ", ")),
+  N_Missing = colSums(is.na(helsa)),
+  Unique_Values = sapply(helsa, function(x) length(unique(na.omit(x)))),
+  stringsAsFactors = FALSE
+)
+
+#Add value labels as a separate column
+helsa_variable_table$Value_Labels <- sapply(names(helsa), function(var) {
+  labels <- val_info[[var]]
+  if(!is.null(labels)) {
+    paste(paste0(names(labels), " (", labels, ")"), collapse = "; ")
+  } else {
+    ""
+  }
+})
+
+#Save as excel file
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Basic information')
+write.xlsx(helsa_variable_table, file = "helsa_selected_variable_table_251010.xlsx", colNames=T, format_headers=T)
+######################################################  
+###################################################### 
 

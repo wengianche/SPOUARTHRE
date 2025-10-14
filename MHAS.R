@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251002
-#UPDATED: 20251002
+#UPDATED: 20251009
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE MHAS 2001-2022 wave (1-6) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -26,7 +26,7 @@
 
 
 #DATA PREPARATION
-#1. 
+#1. List of included variables  
 ######################################################  
 ###################################################### 
 #INSTALL AND LOAD LIBRARY
@@ -51,7 +51,7 @@ pacman::p_load(Hmisc, #attach labels to variables
 ######################################################
 #Load harmonized ELSA data
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Data/H_MHAS_d')
-hmhas <- read_sas("GH_MHAS_d.sas7bdat")
+hmhas <- read_dta("H_MHAS_d.dta")
 
 ##Wave 1
 #The total number of individual #15186
@@ -132,4 +132,54 @@ spair_6 <- w6 %>% filter(!is.na(unhhidnp) & !is.na(s6hhidnp)) %>% mutate(
   distinct(pair_id)  # Keep only unique pairs
 
 ######################################################
+######################################################
+#DATA PREPARATION
+#1. List of included variables  
+###################################################### 
+#1. List of included variables  
+###################################################### 
+#Load data and select relevant variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Data/H_MHAS_d')
+hmhas <- read_dta("H_MHAS_d.dta") %>% select(6, 14, 29:40, 42:72, 79:102, 115:126, 139:195, 217:223, 256:267, 280:297, 304:315, 928:963, 1036:1071, 1216:1251, 1396:1497, 1522:1641, 1690:1725, 1970:1981, 2006:2041, 2066:2077, 2150:2185, 2540:2587, 3634:3669, 3802:3825, 3874:3885, 3904:3909, 4037:4042, 4105:4112, 4189:4224, 4247:4256, 4291:4302, 4333:4342, 4435:4446, 6072:6079, 6128:6133, 6222:6228, 6234:6264)
 
+# Check if labels exist as attributes
+var_info <- sapply(hmhas, function(x) {
+  label <- attr(x, "label")
+  ifelse(is.null(label), "", label)
+})
+
+# Extract value labels from attributes
+val_info <- sapply(hmhas, function(x) {
+  labels <- attr(x, "labels")
+  if(!is.null(labels)) {
+    # Format as "1=Label1; 2=Label2; ..."
+    paste(paste(labels, "=", names(labels)), collapse = "; ")
+  } else {
+    ""
+  }
+})
+
+#Create a detailed table
+hmhas_variable_table <- data.frame(
+  Variable = names(hmhas),
+  Label = sapply(var_info, function(x) ifelse(is.null(x), "", x)),
+  Type = sapply(hmhas, function(x) paste(class(x), collapse = ", ")),
+  N_Missing = colSums(is.na(hmhas)),
+  Unique_Values = sapply(hmhas, function(x) length(unique(na.omit(x)))),
+  stringsAsFactors = FALSE
+)
+
+#Add value labels as a separate column
+hmhas_variable_table$Value_Labels <- sapply(names(hmhas), function(var) {
+  labels <- val_info[[var]]
+  if(!is.null(labels)) {
+    paste(paste0(names(labels), " (", labels, ")"), collapse = "; ")
+  } else {
+    ""
+  }
+})
+
+#Save as excel file
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Basic information')
+write.xlsx(hmhas_variable_table, file = "hmhas_selected_variable_table_251010.xlsx", colNames=T, format_headers=T)
+###################################################### 
