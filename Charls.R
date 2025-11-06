@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20250926
-#UPDATED: 20251021
+#UPDATED: 20251105
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE CHARLS DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -21,11 +21,14 @@
 #20251017 Update inclusion criteria to request both spouses in a pair participated in at least one survey wave and request complete data on age, gender and doctor-diagnosed arthritis in at least wave
 #20251020 The number of NA becames smaller when including medication variables to define other chronic conditions, which is unexpected and should use the other chronic condition variables defined by doctor-diagnosed only to refine rows with NA
 #20251020 Education level 1 should be lower than upper secondary
+#20251104 sarthritis_dm was wrongly deifned and it has been corrected in hcharls_all_sp11 on 20251104
 ######################################################
 
 #Things to pay attention
 ###################################################### 
 #250926, Count the number of spousal pair in each wave (1 to 5) in CHARLS in #1. Participation of individuals across waves (using harmonized data)
+#251028 Add social activty variables RWSOCWK and SWSOCWK
+#20251105 Add cataract, birth year
 ######################################################
 
 #Outline
@@ -62,7 +65,6 @@ pacman::p_load(Hmisc, #attach labels to variables
                gtsummary,
                gt,
                cardx
-            
 ) 
 #Function to get 2X2 table with frequency and proportion presented
 freq_table <- function(table) {
@@ -253,7 +255,7 @@ demo_5_sp <- demo %>% add_count(householdID) %>%      # Add count column
 
 ######################################################
 #2. The number of eligible spousal pairs in each wave (using harmonized data)
-#Inclusion criteria: For each dataset, heterosexual spousal pairs in which both partners participated in at least two survey waves will be included. In cases where multiple spouses were recorded for an individual, only the first will be retained. Both spouses must have complete data on doctor-diagnosed arthritis and other chronic diseases.
+#Inclusion criteria: For each dataset, heterosexual spousal pairs in which both partners participated in at least two survey waves will be included. In cases where multiple spouses were recorded for an individual, only the first will be retained. Both spouses must have complete data on age, gender, and doctor-diagnosed arthritis.
 #Exclusion criteria: To ensure the reliability of responses, spousal pairs in which either partner reported a doctor-diagnosed memory-related condition (e.g., dementia or Alzheimer’s disease) or was receiving treatment for such conditions will be excluded. Additionally, proxy interviews—often indicative of cognitive impairment—will also be excluded. 
 ######################################################
 #Load data and select relevant variables
@@ -1320,7 +1322,7 @@ hcharls_all_sp8 <- hcharls_all_sp8 %>%
   filter(n() == 2) %>%  # Only keep complete pairs
   mutate(
     person_num = row_number(),
-    sarthritis_dm = ifelse(person_num == 1, arthritis[2], arthritis[1])
+    sarthritis_dm = ifelse(person_num == 1, arthritis_dm[2], arthritis_dm[1])
   ) %>%
   ungroup()
 
