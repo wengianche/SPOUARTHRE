@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251002
-#UPDATED: 20251106
+#UPDATED: 20251111
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE KLoSA 2006-2022 wave (1-9) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -16,6 +16,7 @@
 #Things to pay attention
 ###################################################### 
 #20251105 There was no sample refreshment after wave 4
+#20251111 Cataract is defined based on the variable "rwcatrcte" (ever had cataract surgery), those without surgery would be missed, exclude from analysis
 ######################################################
 
 #Outline

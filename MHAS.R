@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251002
-#UPDATED: 20251105
+#UPDATED: 20251111
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE MHAS 2001-2022 wave (1-6) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -2045,6 +2045,7 @@ hmhas_all_sp23 <- hmhas_all_sp23 %>%
   filter(n() == 2) %>%  # Only keep complete pairs
   mutate(
     person_num = row_number(),
+    sbyear = ifelse(person_num == 1, rabyear[2], rabyear[1]),
     sage = ifelse(person_num == 1, rage[2], rage[1]),
     sgender = ifelse(person_num == 1, ragender[2], ragender[1]),  
     seducl = ifelse(person_num == 1, raeducl[2], raeducl[1]),

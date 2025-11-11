@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20250926
-#UPDATED: 20251105
+#UPDATED: 20251111
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE CHARLS DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -22,13 +22,14 @@
 #20251020 The number of NA becames smaller when including medication variables to define other chronic conditions, which is unexpected and should use the other chronic condition variables defined by doctor-diagnosed only to refine rows with NA
 #20251020 Education level 1 should be lower than upper secondary
 #20251104 sarthritis_dm was wrongly deifned and it has been corrected in hcharls_all_sp11 on 20251104
+#20251105 Add birth year
 ######################################################
 
 #Things to pay attention
 ###################################################### 
 #250926, Count the number of spousal pair in each wave (1 to 5) in CHARLS in #1. Participation of individuals across waves (using harmonized data)
 #251028 Add social activty variables RWSOCWK and SWSOCWK
-#20251105 Add cataract, birth year
+#20251105 birth year
 ######################################################
 
 #Outline
@@ -380,7 +381,7 @@ table(qc3$spousal_part_pattern, exclude=NULL) #30 spousal pairs in which either 
 hcharls_w2 <- hcharls %>% filter(inw2==1 & !is.na(s2id) & s2id != "0") #15575 individuals and 7783 spousal pairs plus 9 respondents with no spouses responds to this wave
 
 #Check the number of spousal pairs
-table(as.data.frame(table(hcharls_w2$householdID))$Freq, exclude=NULL) 
+table(as.data.frame(table(hcharls_w2$householdID))$Freq, exclude=NULL) 33333
 
 #QC: frequency of HWCPL (Whether coupled household), should all be 1
 table(hcharls_w2$h2cpl) # all 1
@@ -2672,6 +2673,7 @@ hcharls_all_sp11 <- hcharls_all_sp11 %>%
   filter(n() == 2) %>%  # Only keep complete pairs
   mutate(
     person_num = row_number(),
+    sbyear = ifelse(person_num == 1, rabyear[2], rabyear[1]),
     sage = ifelse(person_num == 1, rage[2], rage[1]),
     sgender = ifelse(person_num == 1, ragender[2], ragender[1]),  
     seducl = ifelse(person_num == 1, raeducl[2], raeducl[1]),

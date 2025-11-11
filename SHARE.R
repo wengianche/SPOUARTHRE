@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251021
-#UPDATED: 20251101
+#UPDATED: 20251111
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE SHARE 2004-2022 wave (1-2,4-9), version G, DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -12,6 +12,7 @@
 #Logbook
 ###################################################### 
 #20251031 For wave 7, include only those who had completed interviews, those participated in condensed interview were not counted to avoid missingness of key covariates
+#20251111 Add Birth year
 ######################################################
 
 #Things to pay attention
@@ -3104,6 +3105,7 @@ hshare_all_sp25 <- hshare_all_sp25 %>%
   filter(n() == 2) %>%  # Only keep complete pairs
   mutate(
     person_num = row_number(),
+    sbyear = ifelse(person_num == 1, rabyear[2], rabyear[1]),
     sage = ifelse(person_num == 1, rage[2], rage[1]),
     sgender = ifelse(person_num == 1, ragender[2], ragender[1]),  
     seducl = ifelse(person_num == 1, raeducl[2], raeducl[1]),
