@@ -1,9 +1,9 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20250929
-#UPDATED: 20251111
+#UPDATED: 20251127
 #ANALYST: WENG IAN CHE
-#PURPOSE OF THIS SYNTAX: EXPLORE ELSA 2002-2019 wave (1-9) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
+#PURPOSE OF THIS SYNTAX: EXPLORE ELSA 2002-2019 wave (1-9) DATA STRUCTURE, DATA PREPARATION
 #R VERSION: version 4.4.3 (2025-02-28)
 ----------------------------------------------------------------------
 #DATA SOURCE:
@@ -32,11 +32,15 @@
 #2. The number of eligible spousal pairs in each wave (using harmonized data)
 #3. The number of individuals died during follow-up (helsa_all_sp26)
 #4. Descriptive data of selected baseline and outcome variables in helsa_all_sp26
-
+#5. Check strange values (helsa_all_sp27)
+#6. Missingness pattern (helsa_all_sp27)
+#7. Check multicollinearity (helsa_all_sp27)
 
 #DATA PREPARATION
 #1. List of included variables  
 #2. Define outcomes and potential confounders to be adjusted in helsa_all_sp4
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (helsa_all_sp27) 
+#4. Post imputation modifications (helsa_all_sp27 and helsa_imp_all)
 ######################################################  
 ###################################################### 
 #INSTALL AND LOAD LIBRARY
@@ -55,7 +59,14 @@ pacman::p_load(Hmisc, #attach labels to variables
                janitor,
                gtsummary,
                gt,
-               cardx
+               cardx,
+               naniar,
+               mice,
+               mitools,
+               broom.mixed,
+               MatchIt,
+               VIM,
+               corrplot
 ) 
 #Function to get 2X2 table with frequency and proportion presented
 freq_table <- function(table) {
@@ -74,6 +85,9 @@ freq_table <- function(table) {
 #2. The number of eligible spousal pairs in each wave (using harmonized data)
 #3. The number of individuals died during follow-up (helsa_all_sp27)
 #4. Descriptive data of selected baseline and outcome variables in helsa_all_sp27
+#5. Check strange values (helsa_all_sp27)
+#6. Missingness pattern (helsa_all_sp27)
+#7. Check multicollinearity (helsa_all_sp27)
 ######################################################
 #1. Participation of individuals across waves (using harmonized data)
 ######################################################
@@ -1155,10 +1169,117 @@ descriptive_base_var_by_gender <- descriptive %>%  tbl_summary(
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/ELSA')
 write_xlsx(descriptive_base_var_by_gender[["table_body"]], path = "elsa_descriptive_base_out_var_by_gender.xlsx", col_names=T, format_headers=T)
 ######################################################
+#5. Check strange values (helsa_all_sp27)
+######################################################
+#Load dataset helsa_all_sp27
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+load("helsa_all_sp27.rda")
+
+#Select relevant variable
+helsa_all_sp27 <- helsa_all_sp27 %>% select(idauniq, rage, rabyear, rabplace, ragender, rarelig_e,rmcurln, raeducl, rmbmin, rmbmicat, rpact, rdrinke, rdrinkr, rsmokev, roccup, hincome, rkcnt, rsoc, ramomeduage, radadeduage, rclstress, rspsupport, rshlt, radlfive, riadlza, rmobilsev, arthritis, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, lunge, lunge_dm, hearte, stroke, psyche, psyche_dm, hchole, hchole_dm, catracte, parkine, osteoe, osteoe_dm, asthmae, asthmae_dm) %>% 
+  mutate(across(where(haven::is.labelled), as.numeric))
+
+#Function for checking frequency of each continuous variable
+freq <- function(data, var){
+  freq_table <- as.data.frame(table(data[[var]], exclude=NULL))
+  return(freq_table)
+}
+freq_table <- freq(helsa_all_sp27, "rage")
+freq_table <- freq(helsa_all_sp27, "rabyear")
+freq_table <- freq(helsa_all_sp27, "rmcurln")
+freq_table <- freq(helsa_all_sp27, "rmbmin") 
+freq_table <- freq(helsa_all_sp27, "rdrinkr")
+freq_table <- freq(helsa_all_sp27, "hincome") #with negative and zero values
+######################################################
+#6. Missingness pattern (helsa_all_sp27)
+######################################################
+#Load dataset helsa_all_sp27 and select relevant variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+load("helsa_all_sp27.rda")
+
+helsa_miss <- helsa_all_sp27 %>% select(idauniq, rage, rabyear, ragender, rabplace, raracem, rarelig_e, rmcurln, raeducl, rmbmin, rmbmicat, rpact,  rdrinkr, rdrinke, rsmokev, roccup, roccup2_2, hincome, rkcnt, ramomeduage, radadeduage, rclstress, rshlt, radlfive, riadlza, rmobilsev, rspsupport, arthritis, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, lunge, lunge_dm, hearte, stroke, psyche, psyche_dm, hchole, hchole_dm, asthmae, asthmae_dm, catracte, parkine, osteoe, osteoe_dm)
+
+#Convert missing types into NA
+helsa_miss <- helsa_miss %>% mutate(rabplace=case_when(
+  rabplace==-13 | rabplace==-4 ~ NA,
+  TRUE ~ rabplace),
+  raeducl=case_when(
+    raeducl==-4 | raeducl==-13| raeducl==-15 | raeducl==-18 ~ NA,
+    TRUE ~ raeducl),
+  rdrinke=case_when(
+    rdrinke==-3 | rdrinke==-4 | rdrinke==-13 | rdrinke==-16 ~ NA,
+    TRUE ~ rdrinke),
+  rsmokev=case_when(
+    rsmokev==-4 | rsmokev==-13 | rsmokev==-16 | rsmokev==-18 ~ NA,
+    TRUE ~ rsmokev),
+  rarelig_e=case_when(
+    rarelig_e==-9 | rarelig_e==-13 | rarelig_e==-16 | rarelig_e==-18 | rarelig_e==-23 ~ NA,
+    TRUE ~ rarelig_e),
+  rmbmicat=case_when(
+    rmbmicat==-9 | rmbmicat==-14 | rmbmicat==-16 | rmbmicat==-19 | rmbmicat==-24 ~ NA,
+    TRUE ~ rmbmicat),
+  roccup=case_when(
+    roccup==-4 | roccup==-15 | roccup==-18 ~ NA,
+    TRUE ~ roccup),
+  rkcnt=case_when(
+    rkcnt==-3 | rkcnt==-11 | rkcnt==-13 | rkcnt==-18 ~ NA,
+    TRUE ~ rkcnt),
+  ramomeduage=case_when(
+    ramomeduage==-1 | ramomeduage==-4 | ramomeduage==-18 ~ NA,
+    TRUE ~ ramomeduage),
+  radadeduage=case_when(
+    radadeduage==-1 | radadeduage==-4 | radadeduage==-18 ~ NA,
+    TRUE ~ radadeduage),
+  rshlt=case_when(
+    rshlt==-4 | rshlt==-16 | rshlt==-13 | rshlt==-18 ~ NA,
+    TRUE ~ rshlt))
+
+#Visual Missingness Map
+vis_miss(helsa_miss)
+#Individuals with length of marriage missing, also likley have childhood/lifetime stressful event missing 
+
+#Visualize missing patterns
+helsa_mp <- md.pattern(helsa_miss)
+helsa_mp_pair <- md.pairs(helsa_miss) #pairwise missing pattern
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Graphs')
+tiff("helsa_missing_patterns.tiff", width = 12, height = 16, units = "in", res = 300)
+gg_miss_upset(helsa_miss)
+dev.off()
+
+#Check missing distribution between rmbmin and hincome
+marginplot(helsa_miss[, c("rmbmin", "rdrinkr")], col=mdc(1:2), cex=1.2, cex.lab=1.2, cex.numbers=1.3, pch=19)
+#Similar distribution between observed and missing, likely missing at random
+
+# Show percent of missing values per variable
+gg_miss_var(helsa_miss, show_pct = TRUE)
+
+# Get a summary table for each variable
+miss_var_summary(helsa_miss)
+######################################################
+#7. Check multicollinearity (helsa_all_sp28)
+######################################################
+#Identify highly correlated variables
+numeric_vars <- helsa_miss[sapply(helsa_miss, is.numeric)]
+cor_matrix <- cor(numeric_vars, use = "pairwise.complete.obs")
+
+#Find variables with correlation > 0.9
+high_cor <- which(abs(cor_matrix) > 0.9 & upper.tri(cor_matrix), arr.ind = TRUE)
+print(high_cor)
+#rage and rabyear is highly correlated, with cor > 0.9
+
+#Save cor_matrix
+cor_df <- as.data.frame(cor_matrix)
+cor_df$Variable <- rownames(cor_matrix)
+cor_df <- cor_df[, c("Variable", setdiff(names(cor_df), "Variable"))]
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/ELSA')
+write.csv(cor_df, "elsa_cor_matrix.csv", row.names = FALSE)
+######################################################
 ######################################################
 #DATA PREPARATION
 #1. List of included variables  
 #2. Define outcomes and potential confounders to be adjusted in helsa_all_sp4
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (helsa_all_sp) 
+#4. Post imputation modifications (helsa_all_sp11 and helsa_imp_all_long)
 ###################################################### 
 #1. List of included variables  
 ###################################################### 
@@ -3278,6 +3399,59 @@ inconsistent_households <- helsa_all_sp26 %>%
 #Select those with inconsistent household hitot variable
 qc <- helsa_all_sp26 %>% filter(householdID %in% inconsistent_households$householdID) %>% dplyr::select("householdID", "hitsemp", "hicap", "hiothhh", "hitot")
 
+#Add height and weight variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/ELSA/Waves/UKDA-5050-stata/stata/stata13_se')
+helsa <- read_dta("h_elsa_g3.dta") %>% select(idauniq, r2mheight, r4mheight,r6mheight,r8mheight, r2mweight, r4mweight,r6mweight,r8mweight)
+helsa_all_sp28 <- helsa_all_sp27 %>% left_join(.,helsa,by="idauniq")
+
+#Define height and weight
+helsa_all_sp28 <- helsa_all_sp28 %>% mutate(
+  rmheight=case_when(
+    inclusion_wave=="Wave 1" ~ r2mheight,
+    inclusion_wave=="Wave 2" ~ r2mheight,
+    inclusion_wave=="Wave 3" ~ r4mheight,
+    inclusion_wave=="Wave 4" ~ r4mheight,
+    inclusion_wave=="Wave 5" ~ r6mheight,
+    inclusion_wave=="Wave 6" ~ r6mheight,
+    inclusion_wave=="Wave 7" ~ r8mheight,
+    TRUE~ r8mheight),
+  rmweight=case_when(
+    inclusion_wave=="Wave 1" ~ r2mweight,
+    inclusion_wave=="Wave 2" ~ r2mweight,
+    inclusion_wave=="Wave 3" ~ r4mweight,
+    inclusion_wave=="Wave 4" ~ r4mweight,
+    inclusion_wave=="Wave 5" ~ r6mweight,
+    inclusion_wave=="Wave 6" ~ r6mweight,
+    inclusion_wave=="Wave 7" ~ r8mweight,
+    TRUE~ r8mweight))
+
+#Create variable of any chronic conditions
+helsa_all_sp28 <- helsa_all_sp28 %>% mutate(
+  rchrondis = case_when(
+    # Check if any variable = 1 (no NA in this row for the 1s check)
+    inclusion_wave=="Wave 1" & if_any(c(r1hibpe, r1diabe, r1cancre, r1lunge, r1hearte, r1stroke, r1psyche, r2hchole, r1parkine, r1osteoe, r1catracte, r1asthmae), ~ .x == 1) ~ 1,
+    # Check if all variables = 0 (no NA in this row for the 0s check)
+    inclusion_wave=="Wave 1" & if_all(c(r1hibpe, r1diabe, r1cancre, r1lunge, r1hearte, r1stroke, r1psyche, r2hchole, r1parkine, r1osteoe, r1catracte, r1asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 2" & if_any(c(r2hibpe, r2diabe, r2cancre, r2lunge, r2hearte, r2stroke, r2psyche, r2hchole, r2parkine, r2osteoe, r2catracte, r2asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 2" & if_all(c(r2hibpe, r2diabe, r2cancre, r2lunge, r2hearte, r2stroke, r2psyche, r2hchole, r2parkine, r2osteoe, r2catracte, r2asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 3" & if_any(c(r3hibpe, r3diabe, r3cancre, r3lunge, r3hearte, r3stroke, r3psyche, r3hchole, r3parkine, r3osteoe, r3catracte, r3asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 3" & if_all(c(r3hibpe, r3diabe, r3cancre, r3lunge, r3hearte, r3stroke, r3psyche, r3hchole, r3parkine, r3osteoe, r3catracte, r3asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 4" & if_any(c(r4hibpe, r4diabe, r4cancre, r4lunge, r4hearte, r4stroke, r4psyche, r4hchole, r4parkine, r4osteoe, r4catracte, r4asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 4" & if_all(c(r4hibpe, r4diabe, r4cancre, r4lunge, r4hearte, r4stroke, r4psyche, r4hchole, r4parkine, r4osteoe, r4catracte, r4asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 5" & if_any(c(r5hibpe, r5diabe, r5cancre, r5lunge, r5hearte, r5stroke, r5psyche, r5hchole, r5parkine, r5osteoe, r5catracte, r5asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 5" & if_all(c(r5hibpe, r5diabe, r5cancre, r5lunge, r5hearte, r5stroke, r5psyche, r5hchole, r5parkine, r5osteoe, r5catracte, r5asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 6" & if_any(c(r6hibpe, r6diabe, r6cancre, r6lunge, r6hearte, r6stroke, r6psyche, r6hchole, r6parkine, r6osteoe, r6catracte, r6asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 6" & if_all(c(r6hibpe, r6diabe, r6cancre, r6lunge, r6hearte, r6stroke, r6psyche, r6hchole, r6parkine, r6osteoe, r6catracte, r6asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 7" & if_any(c(r7hibpe, r7diabe, r7cancre, r7lunge, r7hearte, r7stroke, r7psyche, r7hchole, r7parkine, r7osteoe, r7catracte, r7asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 7" & if_all(c(r7hibpe, r7diabe, r7cancre, r7lunge, r7hearte, r7stroke, r7psyche, r7hchole, r7parkine, r7osteoe, r7catracte, r7asthmae),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 8" & if_any(c(r8hibpe, r8diabe, r8cancre, r8lunge, r8hearte, r8stroke, r8psyche, r8hchole, r8parkine, r8osteoe, r8catracte, r8asthmae), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 8" & if_all(c(r8hibpe, r8diabe, r8cancre, r8lunge, r8hearte, r8stroke, r8psyche, r8hchole, r8parkine, r8osteoe, r8catracte, r8asthmae),  ~ .x == 0) ~ 0,
+    # Otherwise NA
+    TRUE ~ NA_real_))
+
+#Check frequency of archrondis
+table(helsa_all_sp28$rchrondis, exclude=NULL) #171 NAs
+qc <- helsa_all_sp28 %>% filter(is.na(rchrondis)) %>% select(rchrondis, r1hibpe, r1diabe, r1cancre, r1lunge, r1hearte, r1stroke, r1psyche, r2hchole, r1parkine, r1osteoe, r1catracte, r1asthmae,r2hibpe, r2diabe, r2cancre, r2lunge, r2hearte, r2stroke, r2psyche, r2hchole, r2parkine, r2osteoe, r2catracte, r2asthmae, r3hibpe, r3diabe, r3cancre, r3lunge, r3hearte, r3stroke, r3psyche, r3hchole, r3parkine, r3osteoe, r3catracte, r3asthmae, r4hibpe, r4diabe, r4cancre, r4lunge, r4hearte, r4stroke, r4psyche, r4hchole, r4parkine, r4osteoe, r4catracte, r4asthmae, r5hibpe, r5diabe, r5cancre, r5lunge, r5hearte, r5stroke, r5psyche, r5hchole, r5parkine, r5osteoe, r5catracte, r5asthmae, r6hibpe, r6diabe, r6cancre, r6lunge, r6hearte, r6stroke, r6psyche, r6hchole, r6parkine, r6osteoe, r6catracte, r6asthmae, r7hibpe, r7diabe, r7cancre, r7lunge, r7hearte, r7stroke, r7psyche, r7hchole, r7parkine, r7osteoe, r7catracte, r7asthmae, r8hibpe, r8diabe, r8cancre, r8lunge, r8hearte, r8stroke, r8psyche, r8hchole, r8parkine, r8osteoe, r8catracte, r8asthmae)
 ######################################################
 ##Define covariates at inclusion for the paired spouses
 ######################################################
@@ -3415,9 +3589,461 @@ table(as.data.frame(table(death_arthritis2$householdID, exclude=NULL))$Freq,excl
 helsa_all_sp27 <- helsa_all_sp26 %>% filter(!householdID %in% death_arthritis2$householdID)
 table(as.data.frame(table(helsa_all_sp27$householdID, exclude=NULL))$Freq,exclude = NULL) #9818 individuals and 4909 spousal pairs
 
+#Recode occupation classification rwsoc2000
+helsa_all_sp27 <- helsa_all_sp27 %>% mutate(
+  roccup2=case_when(
+    inclusion_wave=="Wave 1" ~ r1soc2000,
+    inclusion_wave=="Wave 2" ~ r2soc2000,
+    inclusion_wave=="Wave 3" ~ r3soc2000,
+    inclusion_wave=="Wave 4" ~ r4soc2000,
+    inclusion_wave=="Wave 5" ~ r5soc2000,
+    inclusion_wave=="Wave 6" ~ r6soc2000,
+    inclusion_wave=="Wave 7" ~ r7soc2000,
+    TRUE~ r8soc2000))
+
+helsa_all_sp27 <- helsa_all_sp27 %>%
+  group_by(householdID) %>%
+  filter(n() == 2) %>%  # Only keep complete pairs
+  mutate(
+    person_num = row_number(),
+    soccup2 = ifelse(person_num == 1, roccup2[2], roccup2[1])) %>% ungroup()
+
+helsa_all_sp27 <- helsa_all_sp27 %>% mutate(
+  roccup2_2=case_when(
+    roccup2==1 | roccup2==2~ 1, #1.Legislator, senior official or manager
+    roccup2==3 | roccup2==4 | roccup2==5 | roccup2==6 ~ 2, #2.Professional
+    roccup2==7 | roccup2==8 | roccup2==9 |roccup2==10 | roccup2==11 ~ 3, #3.Technician or associate professional
+    roccup2==12 | roccup2==13 ~ 4, #4.Clerk
+    roccup2==18 | roccup2==19 | roccup2==20 |roccup2==21 ~ 5, #5.Service worker and shop and market sales worker
+    roccup2==14 ~ 6, #6.Skilled agricultural or fishery worker
+    roccup2==15 | roccup2==16 | roccup2==17 ~ 7, #7.Craft and related trades worker
+    roccup2==22 | roccup2==23 ~ 8, #8.Plant and machine operator or assembler
+    roccup2==24 | roccup2==25 ~ 9, #9.Elementary occupation
+    roccup2==-23 | roccup2==-8 ~ 10, #10.Unemployed
+    roccup2==-13 | roccup2==-18 ~ NA_real_)) #Missing
+
+#Check frequency of roccup2_2
+table(helsa_all_sp27$roccup2_2, exclude=NULL)
+
+helsa_all_sp27 <- helsa_all_sp27 %>%
+  group_by(householdID) %>%
+  filter(n() == 2) %>%  # Only keep complete pairs
+  mutate(
+    person_num = row_number(),
+    soccup2_2 = ifelse(person_num == 1, roccup2_2[2], roccup2_2[1])) %>% ungroup()
+
+#Define weight and height variables for paired spouses
+helsa_all_sp28 <- helsa_all_sp28 %>%
+  group_by(householdID) %>%
+  filter(n() == 2) %>%  # Only keep complete pairs
+  mutate(
+    person_num = row_number(),
+    smheight = if_else(person_num == 1, rmheight[2], rmheight[1]),
+    smweight = if_else(person_num == 1, rmweight[2], rmweight[1]),
+    schrondis = if_else(person_num == 1, rchrondis[2], rchrondis[1])) %>%
+  ungroup()
+
 #Save dataset helsa_all_sp27
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
 save(helsa_all_sp27, file = "helsa_all_sp27.rda")
+
+#Save dataset helsa_all_sp28
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+save(helsa_all_sp28, file = "helsa_all_sp28.rda")
 ######################################################
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (helsa_all_sp28) 
+###################################################### 
+#Load data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+load("helsa_all_sp28.rda")
+
+#Create new disease variables for imputation
+helsa_all_sp28 <- helsa_all_sp28 %>% mutate(
+  arthre2=case_when(
+    inclusion_wave=="Wave 1" ~ r1arthre,
+    inclusion_wave=="Wave 2" ~ r2arthre,
+    inclusion_wave=="Wave 3" ~ r3arthre,
+    inclusion_wave=="Wave 4" ~ r4arthre,
+    inclusion_wave=="Wave 5" ~ r5arthre,
+    inclusion_wave=="Wave 6" ~ r6arthre,
+    inclusion_wave=="Wave 7" ~ r7arthre,
+    TRUE ~ r8arthre),
+  hibpe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1hibpe,
+    inclusion_wave=="Wave 2" ~ r2hibpe,
+    inclusion_wave=="Wave 3" ~ r3hibpe,
+    inclusion_wave=="Wave 4" ~ r4hibpe,
+    inclusion_wave=="Wave 5" ~ r5hibpe,
+    inclusion_wave=="Wave 6" ~ r6hibpe,
+    inclusion_wave=="Wave 7" ~ r7hibpe,
+    TRUE ~ r8hibpe),
+  diabe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1diabe,
+    inclusion_wave=="Wave 2" ~ r2diabe,
+    inclusion_wave=="Wave 3" ~ r3diabe,
+    inclusion_wave=="Wave 4" ~ r4diabe,
+    inclusion_wave=="Wave 5" ~ r5diabe,
+    inclusion_wave=="Wave 6" ~ r6diabe,
+    inclusion_wave=="Wave 7" ~ r7diabe,
+    TRUE ~ r8diabe),
+  cancre2=case_when(
+    inclusion_wave=="Wave 1" ~ r1cancre,
+    inclusion_wave=="Wave 2" ~ r2cancre,
+    inclusion_wave=="Wave 3" ~ r3cancre,
+    inclusion_wave=="Wave 4" ~ r4cancre,
+    inclusion_wave=="Wave 5" ~ r5cancre,
+    inclusion_wave=="Wave 6" ~ r6cancre,
+    inclusion_wave=="Wave 7" ~ r7cancre,
+    TRUE ~ r8cancre),
+  lunge2=case_when(
+    inclusion_wave=="Wave 1" ~ r1lunge,
+    inclusion_wave=="Wave 2" ~ r2lunge,
+    inclusion_wave=="Wave 3" ~ r3lunge,
+    inclusion_wave=="Wave 4" ~ r4lunge,
+    inclusion_wave=="Wave 5" ~ r5lunge,
+    inclusion_wave=="Wave 6" ~ r6lunge,
+    inclusion_wave=="Wave 7" ~ r7lunge,
+    TRUE ~ r8lunge),
+  hearte2=case_when(
+    inclusion_wave=="Wave 1" ~ r1hearte,
+    inclusion_wave=="Wave 2" ~ r2hearte,
+    inclusion_wave=="Wave 3" ~ r3hearte,
+    inclusion_wave=="Wave 4" ~ r4hearte,
+    inclusion_wave=="Wave 5" ~ r5hearte,
+    inclusion_wave=="Wave 6" ~ r6hearte,
+    inclusion_wave=="Wave 7" ~ r7hearte,
+    TRUE ~ r8hearte),
+  stroke2=case_when(
+    inclusion_wave=="Wave 1" ~ r1stroke,
+    inclusion_wave=="Wave 2" ~ r2stroke,
+    inclusion_wave=="Wave 3" ~ r3stroke,
+    inclusion_wave=="Wave 4" ~ r4stroke,
+    inclusion_wave=="Wave 5" ~ r5stroke,
+    inclusion_wave=="Wave 6" ~ r6stroke,
+    inclusion_wave=="Wave 7" ~ r7stroke,
+    TRUE ~ r8stroke),
+  psyche2=case_when(
+    inclusion_wave=="Wave 1" ~ r1psyche,
+    inclusion_wave=="Wave 2" ~ r2psyche,
+    inclusion_wave=="Wave 3" ~ r3psyche,
+    inclusion_wave=="Wave 4" ~ r4psyche,
+    inclusion_wave=="Wave 5" ~ r5psyche,
+    inclusion_wave=="Wave 6" ~ r6psyche,
+    inclusion_wave=="Wave 7" ~ r7psyche,
+    TRUE ~ r8psyche),
+  hchole2=case_when(
+    inclusion_wave=="Wave 1" ~ r2hchole,
+    inclusion_wave=="Wave 2" ~ r2hchole,
+    inclusion_wave=="Wave 3" ~ r3hchole,
+    inclusion_wave=="Wave 4" ~ r4hchole,
+    inclusion_wave=="Wave 5" ~ r5hchole,
+    inclusion_wave=="Wave 6" ~ r6hchole,
+    inclusion_wave=="Wave 7" ~ r7hchole,
+    TRUE ~ r8hchole),
+  asthmae2=case_when(
+    inclusion_wave=="Wave 1" ~ r1asthmae,
+    inclusion_wave=="Wave 2" ~ r2asthmae,
+    inclusion_wave=="Wave 3" ~ r3asthmae,
+    inclusion_wave=="Wave 4" ~ r4asthmae,
+    inclusion_wave=="Wave 5" ~ r5asthmae,
+    inclusion_wave=="Wave 6" ~ r6asthmae,
+    inclusion_wave=="Wave 7" ~ r7asthmae,
+    TRUE ~ r8asthmae),
+  catracte2=case_when(
+    inclusion_wave=="Wave 1" ~ r1catracte,
+    inclusion_wave=="Wave 2" ~ r2catracte,
+    inclusion_wave=="Wave 3" ~ r3catracte,
+    inclusion_wave=="Wave 4" ~ r4catracte,
+    inclusion_wave=="Wave 5" ~ r5catracte,
+    inclusion_wave=="Wave 6" ~ r6catracte,
+    inclusion_wave=="Wave 7" ~ r7catracte,
+    TRUE ~ r8catracte),
+  parkine2=case_when(
+    inclusion_wave=="Wave 1" ~ r1parkine,
+    inclusion_wave=="Wave 2" ~ r2parkine,
+    inclusion_wave=="Wave 3" ~ r3parkine,
+    inclusion_wave=="Wave 4" ~ r4parkine,
+    inclusion_wave=="Wave 5" ~ r5parkine,
+    inclusion_wave=="Wave 6" ~ r6parkine,
+    inclusion_wave=="Wave 7" ~ r7parkine,
+    TRUE ~ r8parkine),
+  osteoe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1osteoe,
+    inclusion_wave=="Wave 2" ~ r2osteoe,
+    inclusion_wave=="Wave 3" ~ r3osteoe,
+    inclusion_wave=="Wave 4" ~ r4osteoe,
+    inclusion_wave=="Wave 5" ~ r5osteoe,
+    inclusion_wave=="Wave 6" ~ r6osteoe,
+    inclusion_wave=="Wave 7" ~ r7osteoe,
+    TRUE ~ r8osteoe))
+
+#Convert missing types into NA
+helsa_all_sp28 <- helsa_all_sp28 %>% mutate(rabplace=case_when(
+  rabplace==-13 | rabplace==-4 ~ NA,
+  TRUE ~ rabplace),
+  raeducl=case_when(
+    raeducl==-4 | raeducl==-13| raeducl==-15 | raeducl==-18 ~ NA,
+    TRUE ~ raeducl),
+  rdrinke=case_when(
+    rdrinke==-3 | rdrinke==-4 | rdrinke==-13 | rdrinke==-16 ~ NA,
+    TRUE ~ rdrinke),
+  rsmokev=case_when(
+    rsmokev==-4 | rsmokev==-13 | rsmokev==-16 | rsmokev==-18 ~ NA,
+    TRUE ~ rsmokev),
+  rarelig_e=case_when(
+    rarelig_e==-9 | rarelig_e==-13 | rarelig_e==-16 | rarelig_e==-18 | rarelig_e==-23 ~ NA,
+    TRUE ~ rarelig_e),
+  rmbmicat=case_when(
+    rmbmicat==-9 | rmbmicat==-14 | rmbmicat==-16 | rmbmicat==-19 | rmbmicat==-24 ~ NA,
+    TRUE ~ rmbmicat),
+  roccup=case_when(
+    roccup==-4 | roccup==-15 | roccup==-18 ~ NA,
+    TRUE ~ roccup),
+  rkcnt=case_when(
+    rkcnt==-3 | rkcnt==-11 | rkcnt==-13 | rkcnt==-18 ~ NA,
+    TRUE ~ rkcnt),
+  ramomeduage=case_when(
+    ramomeduage==-1 | ramomeduage==-4 | ramomeduage==-18 ~ NA,
+    TRUE ~ ramomeduage),
+  radadeduage=case_when(
+    radadeduage==-1 | radadeduage==-4 | radadeduage==-18 ~ NA,
+    TRUE ~ radadeduage),
+  rshlt=case_when(
+    rshlt==-4 | rshlt==-16 | rshlt==-13 | rshlt==-18 ~ NA,
+    TRUE ~ rshlt),
+  arthre2=case_when(
+    arthre2==-4 | arthre2==-18 ~ NA,
+    TRUE ~ arthre2),
+  hibpe2=case_when(
+    hibpe2==-4 | hibpe2==-13 | hibpe2==-18 ~ NA,
+    TRUE ~ hibpe2),
+  diabe2=case_when(
+    diabe2==-4 | diabe2==-13 | diabe2==-18 ~ NA,
+    TRUE ~ diabe2),
+  cancre2=case_when(
+    cancre2==-4 | cancre2==-18 ~ NA,
+    TRUE ~ cancre2),
+  lunge2=case_when(
+    lunge2==-4 |  lunge2==-18 ~ NA,
+    TRUE ~ lunge2),
+  hearte2=case_when(
+    hearte2==-4 | hearte2==-13 | hearte2==-18 ~ NA,
+    TRUE ~ hearte2),
+  stroke2=case_when(
+    stroke2==-4 | stroke2==-13 | stroke2==-18 ~ NA,
+    TRUE ~ stroke2),
+  psyche2=case_when(
+    psyche2==-4 | psyche2==-18 ~ NA,
+    TRUE ~ psyche2),
+  hchole2=case_when(
+    hchole2==-4 | hchole2==-18 ~ NA,
+    TRUE ~ hchole2),
+  catracte2=case_when(
+    catracte2==-4 | catracte2==-18 ~ NA,
+    TRUE ~ catracte2),
+  parkine2=case_when(
+    parkine2==-4 | parkine2==-18 ~ NA,
+    TRUE ~ parkine2),
+  osteoe2=case_when(
+    osteoe2==-4 | osteoe2==-18 ~ NA,
+    TRUE ~ osteoe2),
+  asthmae2=case_when(
+    asthmae2==-4 | asthmae2==-18 ~ NA,
+    TRUE ~ asthmae2))
+
+#Select relevant variables
+helsa_miss <- helsa_all_sp28 %>% dplyr::select(idauniq, rage, rabyear, ragender, rabplace, raracem, ramomeduage, radadeduage, rclstress, rarelig_e, rmcurln, raeducl, rpact, rdrinkr, rdrinke, rsmokev, roccup, roccup2_2, rmheight,rmweight,rmbmin, hincome, rkcnt, arthre2, hibpe2, diabe2, cancre2, lunge2, hearte2, stroke2, psyche2, hchole2, parkine2, catracte2, asthmae2, osteoe2, rshlt, radlfive, riadlza, rmobilsev, rspsupport, arthritis, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, lunge, lunge_dm, hearte, stroke, psyche, psyche_dm, hchole, hchole_dm, asthmae, asthmae_dm, catracte, parkine, osteoe, osteoe_dm) %>% 
+  mutate(across(c(rage, rabyear, rmcurln, rdrinkr, rmheight, rmweight, rmbmin, hincome), as.numeric)) %>%
+  mutate(across(c(ragender, rabplace, raracem, ramomeduage, radadeduage, rclstress, rarelig_e, raeducl, rpact, rdrinke, rsmokev, roccup, roccup2_2, rkcnt, arthre2, hibpe2, diabe2, cancre2, lunge2, hearte2, stroke2, psyche2, hchole2, parkine2, catracte2, asthmae2, osteoe2, rshlt, radlfive, riadlza, rmobilsev, rspsupport, arthritis, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, lunge, lunge_dm, hearte, stroke, psyche, psyche_dm, hchole, hchole_dm, asthmae, asthmae_dm, catracte, parkine, osteoe, osteoe_dm), as.factor))
+
+#Define ordered variables
+helsa_miss$raeducl <- ordered(helsa_miss$raeducl, levels = c("1", "2", "3"))
+helsa_miss$ramomeduage <- ordered(helsa_miss$ramomeduage, levels = c("1", "2", "3","4","5","6","7"))
+helsa_miss$radadeduage <- ordered(helsa_miss$radadeduage, levels = c("1", "2", "3","4","5","6","7"))
+helsa_miss$rshlt <- ordered(helsa_miss$rshlt, levels = c("1", "2", "3","4","5"))
+helsa_miss$radlfive <- ordered(helsa_miss$radlfive, levels = c("0", "1", "2","3","4", "5"))
+helsa_miss$riadlza <- ordered(helsa_miss$riadlza, levels = c("0", "1", "2","3","4", "5"))
+helsa_miss$rmobilsev <- ordered(helsa_miss$rmobilsev, levels = c("0", "1", "2","3","4", "5", "6","7"))
+
+#Create the mids object containing the defacult setting
+ini <- mice(helsa_miss, max=0, print=FALSE)
+
+#Extract meth data and revise accordingly
+meth <- ini$meth #modelling methods
+##Modelling
+#Numeric variables: Predictive mean matching 
+#Factor with 2 levels: Logistic regression 
+#Factor with > 2 levels: Multinomial logit model
+#Ordinal variables: Ordered logit model
+#Change several variables simultaneously
+meth_var_to_change <- c("rmcurln","rclstress", "arthritis", "hibpe","hibpe_dm","diabe", "diabe_dm", "cancre", "cancre_dm", "lunge", "lunge_dm", "hearte", "stroke", "psyche", "psyche_dm", "hchole", "hchole_dm", "catracte", "parkine", "osteoe", "osteoe_dm", "asthmae", "asthmae_dm")
+meth[meth_var_to_change] <- ""
+#Compute BMI using rmheight and rmweight
+meth["rmbmin"] <- "~I(pmin(pmax(rmweight/((rmheight)^2),12),60))"
+
+#Extract prediction matrix
+pred <- ini$pred #prediction matrix
+quickpred <- quickpred(helsa_miss) #take absolute correlation with the target or with the response indicator of at least 0.1 
+##Update prediction matrix: wave-specific prediction 
+#Include rage and ragender in all prediction sets
+quickpred[,c("rage","ragender")] <- 1
+#Remove ID, rage, and ragender from imputation
+quickpred[c("idauniq","rage","rabyear","ragender"),c("idauniq","rage","rabyear","ragender")] <- 0
+#Remove newly defined disease variables from predictor sets and from prediction
+quickpred[,c("idauniq","rabyear","rmcurln", "rclstress","arthritis", "hibpe","hibpe_dm","diabe", "diabe_dm", "cancre", "cancre_dm", "lunge", "lunge_dm", "hearte", "stroke", "psyche", "psyche_dm", "hchole", "hchole_dm", "catracte", "parkine", "osteoe", "osteoe_dm", "asthmae", "asthmae_dm")] <- 0
+quickpred[c("idauniq","rabyear","rmcurln", "rclstress","arthritis", "hibpe","hibpe_dm","diabe", "diabe_dm", "cancre", "cancre_dm", "lunge", "lunge_dm", "hearte", "stroke", "psyche", "psyche_dm", "hchole", "hchole_dm", "catracte", "parkine", "osteoe", "osteoe_dm", "asthmae", "asthmae_dm"),] <- 0
+
+#Save quickpred
+quickpred_df <- as.data.frame(quickpred)
+quickpred_df$Variable <- rownames(quickpred)
+quickpred_df <- quickpred_df[, c("Variable", setdiff(names(quickpred_df), "Variable"))]
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/ELSA')
+write.csv(quickpred_df, "elsa_imp_quickpred.csv", row.names = FALSE)
+
+#Multiple imputation
+helsa_imp <- mice(helsa_miss, m=5, meth=meth, pred=quickpred, include=c("rage","ragender"), maxit=20, print=FALSE, seed=54321)
+
+##Diagnostics
+#Whether imputed values are plausible 
+qc <- as.data.frame(table(helsa_imp[["imp"]][["ramomeduage"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["radadeduage"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rabplace"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rarelig_e"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rpact"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rdrinkr"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rdrinke"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rsmokev"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["roccup2_2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmheight"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmheight"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmheight"]][["3"]]), exclude=NULL) #1 value with height <1
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmheight"]][["4"]]), exclude=NULL) #2 value with height <1
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmheight"]][["5"]]), exclude=NULL) #2 value with height <1
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmweight"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmweight"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmweight"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmweight"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmweight"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmbmin"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmbmin"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmbmin"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmbmin"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmbmin"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["hincome"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["hincome"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["hincome"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["hincome"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["hincome"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rkcnt"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rshlt"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["radlfive"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["riadlza"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rmobilsev"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(helsa_imp[["imp"]][["rspsupport"]]), exclude=NULL) #Pass QC
+
+#Check model convergence
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Graphs')
+tiff("helsa_imp_convergence.tiff", width = 16, height = 16, units = "in", res = 300)
+plot(helsa_imp,layout=c(8,9))
+dev.off()
+
+#Check distributions of original and imputed data
+xyplot(helsa_imp, rmweight ~ rmheight | .imp, pch = 20, cex = 1.4)
+xyplot(helsa_imp, rmheight ~ rmbmin | .imp, pch = 20, cex = 1.4)
+xyplot(helsa_imp, rmbmin ~ rarelig_e | .imp, pch = 20, cex = 1.4)
+xyplot(helsa_imp, rmbmin ~ rshlt | .imp, pch = 20, cex = 1.4)
+xyplot(helsa_imp, rdrinkr ~ rmbmin | .imp, pch = 20)
+xyplot(helsa_imp, rdrinkr ~ rspsupport | .imp, pch = 20)
+xyplot(helsa_imp, ramomeduage ~ radadeduage | .imp, pch = 20)
+xyplot(helsa_imp, ramomeduage ~ rdrinkr | .imp, pch = 20)
+xyplot(helsa_imp, rshlt ~ rdrinkr | .imp, pch = 20)
+
+#Extracts imputed data (five imputations)
+helsa_imp_all_long <- complete(helsa_imp,"long", include = TRUE)
+###################################################### 
+#4. Post imputation modifications (helsa_all_sp28 and helsa_imp_all_long)
+###################################################### 
+#Load data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+load("helsa_all_sp28.rda") 
+helsa_imp_all_long <- readRDS("helsa_imp_all_long.rds")
+
+#Extract rchondis from helsa_all_sp28 and add to the five imputed datasets
+var <- helsa_all_sp28 %>% select(idauniq, householdID, rchrondis)
+helsa_imp_all_long <- helsa_imp_all_long %>% left_join(., var, by = "idauniq")
+
+#Create categorical BMI
+helsa_imp_all_long <- helsa_imp_all_long %>% mutate(
+  rmbmicat = case_when(
+    rmbmin <= 18.5 ~ 1,
+    rmbmin > 18.5 & rmbmin < 25 ~ 2,
+    rmbmin >= 25 & rmbmin < 30 ~ 3,
+    rmbmin >= 30 & rmbmin < 35 ~ 4,
+    rmbmin >= 35 & rmbmin < 40 ~ 5,
+    rmbmin >= 40  ~ 6),
+  rabplace=case_when(
+    rabplace=="11" ~ "0",
+    TRUE ~ rabplace))
+
+#Define spousal variables (RERUN!!!!!!!!!!!)
+helsa_imp_all_long <- helsa_imp_all_long %>%
+  group_by(.imp, householdID) %>%
+  filter(n() == 2) %>%
+  arrange(.imp, householdID, idauniq) %>% 
+  mutate(
+    person_num = row_number(),
+    sbyear = if_else(person_num == 1, lead(rabyear), lag(rabyear)),
+    sage = if_else(person_num == 1, lead(rage), lag(rage)),
+    sgender = if_else(person_num == 1, lead(ragender), lag(ragender)),  
+    seducl = if_else(person_num == 1, lead(raeducl), lag(raeducl)),
+    srace = if_else(person_num == 1,  lead(raracem),  lag(raracem)),
+    sbplace= if_else(person_num == 1,  lead(rabplace),  lag(rabplace)),
+    srelig= if_else(person_num == 1,  lead(rarelig_e),  lag(rarelig_e)),
+    smcurln = if_else(person_num == 1, lead(rmcurln), lag(rmcurln)),
+    sshlt = if_else(person_num == 1, lead(rshlt), lag(rshlt)),
+    sadlfive = if_else(person_num == 1, lead(radlfive), lag(radlfive)),
+    siadlza = if_else(person_num == 1, lead(riadlza), lag(riadlza)),
+    smobilsev = if_else(person_num == 1, lead(rmobilsev), lag(rmobilsev)),
+    spact = if_else(person_num == 1, lead(rpact), lag(rpact)),
+    sdrinke = if_else(person_num == 1, lead(rdrinke), lag(rdrinke)),
+    sdrinkr = if_else(person_num == 1, lead(rdrinkr), lag(rdrinkr)),
+    ssmokev = if_else(person_num == 1, lead(rsmokev), lag(rsmokev)),
+    skcnt = if_else(person_num == 1, lead(rkcnt), lag(rkcnt)),
+    smomeducl = if_else(person_num == 1, lead(ramomeduage), lag(ramomeduage)),
+    sdadeducl = if_else(person_num == 1, lead(radadeduage), lag(radadeduage)),
+    soccup = if_else(person_num == 1, lead(roccup), lag(roccup)),
+    soccup2_2 = if_else(person_num == 1, lead(roccup2_2), lag(roccup2_2)),
+    smbmin = if_else(person_num == 1, lead(rmbmin), lag(rmbmin)),
+    smbmicat = if_else(person_num == 1, lead(rmbmicat), lag(rmbmicat)),
+    sclstress = if_else(person_num == 1, lead(rclstress), lag(rclstress)),
+    sspsupport = if_else(person_num == 1, lead(rspsupport), lag(rspsupport)),
+    schrondis = if_else(person_num == 1, lead(rchrondis), lag(rchrondis)),
+    sarthritis = if_else(person_num == 1, lead(arthritis), lag(arthritis)),
+    shibpe = if_else(person_num == 1, lead(hibpe), lag(hibpe)),
+    sdiabe = if_else(person_num == 1, lead(diabe), lag(diabe)),  
+    scancre = if_else(person_num == 1, lead(cancre), lag(cancre)),
+    slunge = if_else(person_num == 1, lead(lunge), lag(lunge)),
+    shearte = if_else(person_num == 1, lead(hearte), lag(hearte)),
+    sstroke = if_else(person_num == 1, lead(stroke), lag(stroke)),
+    spsyche = if_else(person_num == 1, lead(psyche), lag(psyche)),
+    shchole = if_else(person_num == 1, lead(hchole), lag(hchole)),
+    sparkine = if_else(person_num == 1, lead(parkine), lag(parkine)),
+    scatracte = if_else(person_num == 1, lead(catracte), lag(catracte)),
+    sasthmae = if_else(person_num == 1, lead(asthmae), lag(asthmae)),
+    sosteoe = if_else(person_num == 1, lead(osteoe), lag(osteoe)),
+    shibpe_dm = if_else(person_num == 1, lead(hibpe_dm), lag(hibpe_dm)),
+    sdiabe_dm = if_else(person_num == 1, lead(diabe_dm), lag(diabe_dm)),  
+    scancre_dm = if_else(person_num == 1, lead(cancre_dm), lag(cancre_dm)),
+    slunge_dm = if_else(person_num == 1, lead(lunge_dm), lag(lunge_dm)),
+    spsyche_dm = if_else(person_num == 1, lead(psyche_dm), lag(psyche_dm)),
+    shchole_dm = if_else(person_num == 1, lead(hchole_dm), lag(hchole_dm)),
+    sasthmae_dm = if_else(person_num == 1, lead(asthmae_dm), lag(asthmae_dm)),
+    sosteoe_dm = if_else(person_num == 1, lead(osteoe_dm), lag(osteoe_dm))) %>%
+  ungroup()
+
+#Save dataset helsa_imp_all_long
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/ELSA')
+saveRDS(helsa_imp_all_long, file = "helsa_imp_all_long.rds")
+###################################################### 
 ###################################################### 
 

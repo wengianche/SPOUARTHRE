@@ -1,9 +1,9 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251002
-#UPDATED: 20251111
+#UPDATED: 20251127
 #ANALYST: WENG IAN CHE
-#PURPOSE OF THIS SYNTAX: EXPLORE MHAS 2001-2022 wave (1-6) DATA STRUCTURE, DATA PREPARATION, PERFORM STATISTICAL ANALYSES 
+#PURPOSE OF THIS SYNTAX: EXPLORE MHAS 2001-2022 wave (1-6) DATA STRUCTURE, DATA PREPARATION
 #R VERSION: version 4.4.3 (2025-02-28)
 ----------------------------------------------------------------------
 #DATA SOURCE:
@@ -29,11 +29,16 @@
 #2. The number of eligible spousal pairs in each wave (using harmonized data)
 #3. The number of individuals died during follow-up (hmhas_all_sp4)
 #4. Descriptive data of selected baseline and outcome variables in hmhas_all_sp23
-
+#5. Check strange values (hmhas_all_sp23)
+#6. Missingness pattern (hmhas_all_sp23)
+#7. Check multicollinearity (hmhas_all_sp23)
+#8. Check if individuals had more than one marriage (hmhas_all_sp23)
 
 #DATA PREPARATION
 #1. List of included variables  
 #2. Define outcomes and potential confounders to be adjusted in hmhas_all_sp5
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (hmhas_all_sp24)
+#4. Post imputation modifications (hmhas_all_sp24 and hmhas_imp_all_long)
 ######################################################  
 ###################################################### 
 #INSTALL AND LOAD LIBRARY
@@ -68,10 +73,14 @@ freq_table <- function(table) {
 #2. The number of eligible spousal pairs in each wave (using harmonized data)
 #3. The number of individuals died during follow-up (hmhas_all_sp4)
 #4. Descriptive data of selected baseline and outcome variables in hmhas_all_sp23
+#5. Check strange values (hmhas_all_sp23)
+#6. Missingness pattern (hmhas_all_sp23)
+#7. Check multicollinearity (hmhas_all_sp23)
+#8. Check if individuals had more than one marriage (hmhas_all_sp23)
 ######################################################
 #1. Participation of individuals across waves (using harmonized data)
 ######################################################
-#Load harmonized ELSA data
+#Load harmonized MHAS data
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Data/H_MHAS_d')
 hmhas <- read_dta("H_MHAS_d.dta")
 
@@ -162,7 +171,7 @@ spair_6 <- w6 %>% filter(!is.na(unhhidnp) & !is.na(s6hhidnp)) %>% mutate(
 #Load data and select relevant variables
 #Harmonized data_waves_1_to_9
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Data/H_MHAS_d')
-hmhas <- read_dta("H_MHAS_d.dta") %>% dplyr::select(6, 14, 29:40, 42:72, 79:102, 115:126, 139:195, 217:223, 256:267, 280:297, 304:315, 928:963, 1036:1071, 1216:1251, 1396:1497, 1522:1641, 1690:1725, 1970:1981, 2006:2041, 2054:2101, 2150:2185, 2540:2587, 3634:3669, 3694:3705, 3802:3885, 3904:3909, 4037:4042, 4105:4112, 4189:4224, 4247:4256, 4291:4302, 4333:4342, 4435:4446, 6096:6103, 6128:6133, 6222:6265, 6295:6308)
+hmhas <- read_dta("H_MHAS_d.dta") %>% dplyr::select(6, 14, rabyear, 29:40, 42:72, 79:102, 115:126, 139:195, 217:223, 256:267, 280:297, 304:315, 928:963, 1036:1071, 1216:1251, 1396:1497, 1522:1641, 1690:1725, 1970:1981, 2006:2041, 2054:2101, 2150:2185, 2540:2587, 3634:3669, 3694:3705, 3802:3885, 3904:3909, 4037:4042, 4105:4112, 4189:4224, 4247:4256, 4291:4302, 4333:4342, 4435:4446, 6096:6103, 6128:6133, 6222:6265, 6295:6308)
 ######################################################
 ##Wave 1 ##10340 individuals and 5170 spousal pairs participating from wave 1
 ######################################################
@@ -708,10 +717,119 @@ descriptive_base_var_by_gender <- descriptive %>%  tbl_summary(
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/MHAS')
 write_xlsx(descriptive_base_var_by_gender[["table_body"]], path = "mhas_descriptive_base_out_var_by_gender.xlsx", col_names=T, format_headers=T)
 ######################################################
+#5. Check strange values (hmhas_all_sp23)
+######################################################
+#Load dataset hmhas_all_sp23
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+load("hmhas_all_sp23.rda")
+
+#Select relevant variable
+hmhas_all_sp23 <- hmhas_all_sp23 %>% select(rage, rabyear, ragender, hrural, raeducl, rbmin, rbmicat, rpactvg,  rdrinkr, rdrinkb, rbinged, rsmokev, roccup, hitot, hkcnt, rameduc_m, rafeduc_m, rclstress, rshlt, radlfive, riadlfour, rmobilsev, arthritis,arthritis_dm, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, respe, respe_dm, hrtatte, hrtatte_dm, stroke, stroke_dm) %>%
+  mutate(across(where(haven::is.labelled), as.numeric))
+
+#Function for checking frequency of each continuous variable
+freq <- function(data, var){
+  freq_table <- as.data.frame(table(data[[var]], exclude=NULL))
+  return(freq_table)
+}
+freq_table <- freq(hmhas_all_sp23, "rage")
+freq_table <- freq(hmhas_all_sp23, "rabyear")
+freq_table <- freq(hmhas_all_sp23, "rbmin") #1 individual with BMI < 10
+freq_table <- freq(hmhas_all_sp23, "rdrinkr")
+freq_table <- freq(hmhas_all_sp23, "rbinged")
+freq_table <- freq(hmhas_all_sp23, "hincome") 
+freq_table <- freq(hmhas_all_sp23, "hitot") #with negative and zero values
+
+#Add an indicator for strange BMI values that would be excluded from analysis
+hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(BMI_exclude=ifelse(rbmin<10 | rbmin>100,1,0))
+table(hmhas_all_sp23$BMI_exclude, exclude = NULL) #1 observation1 with biologically implausible values
+
+#Save dataset hmhas_all_sp23
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+save(hmhas_all_sp23, file = "hmhas_all_sp23.rda")
+######################################################
+#6. Missingness pattern (hmhas_all_sp24)
+######################################################
+#Load dataset hmhas_all_sp23 and select relevant variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+load("hmhas_all_sp24.rda")
+
+hmhas_miss <- hmhas_all_sp24 %>% select(unhhidnp, rage, rabyear, ragender, hrural2, raeducl, rheight, rweight,rbmin, rbmicat, rpactvg, rdrinkr, rdrinkb, rbinged, rsmokev, roccup, roccup2_2, hitot, hkcnt, rameduc_m, rafeduc_m, rclstress, rshlt, radlfive, riadlfour, rmobilsev, arthritis, arthritis_dm, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, respe, respe_dm, hrtatte, hrtatte_dm, stroke, stroke_dm)
+
+
+#Visual Missingness Map
+vis_miss(hmhas_miss)
+
+#Visualize missing patterns
+hmhas_mp <- md.pattern(hmhas_miss)
+hmhas_mp_pair <- md.pairs(hmhas_miss) #pairwise missing pattern
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Graphs')
+tiff("hmhas_missing_patterns.tiff", width = 12, height = 16, units = "in", res = 300)
+gg_miss_upset(hmhas_miss)
+dev.off()
+
+#Check missing distribution between rmbmin and hincome
+marginplot(hmhas_miss[, c("rbmin", "rshlt")], col=mdc(1:2), cex=1.2, cex.lab=1.2, cex.numbers=1.3, pch=19)
+#Similar distribution between observed and missing, likely missing at random
+
+# Show percent of missing values per variable
+gg_miss_var(hmhas_miss, show_pct = TRUE)
+
+# Get a summary table for each variable
+miss_var_summary(hmhas_miss)
+######################################################
+#7. Check multicollinearity (hmhas_all_sp24)
+######################################################
+#Identify highly correlated variables
+numeric_vars <- hmhas_miss[sapply(hmhas_miss, is.numeric)]
+cor_matrix <- cor(numeric_vars, use = "pairwise.complete.obs")
+
+#Find variables with correlation > 0.9
+high_cor <- which(abs(cor_matrix) > 0.9 & upper.tri(cor_matrix), arr.ind = TRUE)
+print(high_cor)
+
+#Save cor_matrix
+cor_df <- as.data.frame(cor_matrix)
+cor_df$Variable <- rownames(cor_matrix)
+cor_df <- cor_df[, c("Variable", setdiff(names(cor_df), "Variable"))]
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/MHAS')
+write.csv(cor_df, "mhas_cor_matrix.csv", row.names = FALSE)
+######################################################
+#8. Check if individuals had more than one marriage (hmhas_all_sp23)
+######################################################
+#Load data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+load("hmhas_all_sp23.rda")
+
+#Identify individuals with more than one spouses
+qc <- as.data.frame(table(hmhas_all_sp23$unhhidnp)) %>% filter(Freq>1)
+qc2 <- hmhas_all_sp23 %>% filter(unhhidnp %in% qc$Var1) %>% select(unhhidnp, householdID, inclusion_wave, arthritis, sarthritis)
+#114 individuals had more than one marriage
+
+#Select those spousal pairs included in later wave
+qc3 <- qc2 %>%
+  group_by(unhhidnp) %>%
+  arrange(inclusion_wave) %>%  # Sort by inclusion_wave
+  filter(row_number() !=1) %>%  # Keep only LAST wave for each person
+  ungroup()
+
+#Exclude those spousal pairs included in later wave from hmhas_all_sp23
+hmhas_all_sp24 <- hmhas_all_sp23 %>% filter(!householdID %in% qc3$householdID) #17362 individuals and 8681 spousal pairs
+table(as.data.frame(table(hmhas_all_sp24$householdID))$Freq, exclude=NULL)
+
+#Check if individuals with more than one spouses
+qc <- as.data.frame(table(hmhas_all_sp24$unhhidnp)) %>% filter(Freq>1)
+
+#Save dataset hshare_all_sp26
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+save(hmhas_all_sp24, file = "hmhas_all_sp24.rda")
+######################################################
 ######################################################
 #DATA PREPARATION
 #1. List of included variables  
 #2. Define outcomes and potential confounders to be adjusted in hmhas_all_sp5
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (hmhas_all_sp24)
+#4. Post imputation modifications (hmhas_all_sp24 and hmhas_imp_all_long)
 ###################################################### 
 #1. List of included variables  
 ###################################################### 
@@ -2036,6 +2154,50 @@ hmhas_all_sp23 <- hmhas_all_sp23 %>%
       first(hrural)==last(hrural) ~ hrural,
       first(hrural) != last(hrural) ~ NA_real_)) %>%
   ungroup()
+
+#Add height and weight variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Data/MHAS/Data/H_MHAS_d')
+hmhas <- read_dta("H_MHAS_d.dta") %>% select(unhhidnp, r1height, r2height, r3height, r4height, r5height, r6height, r1weight, r2weight, r3weight, r4weight, r5weight, r6weight)
+hmhas_all_sp23 <- hmhas_all_sp23 %>% left_join(.,hmhas,by="unhhidnp")
+
+#Define height and weight
+hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(
+  rheight=case_when(
+    inclusion_wave=="Wave 1" ~ r1height,
+    inclusion_wave=="Wave 2" ~ r2height,
+    inclusion_wave=="Wave 3" ~ r3height,
+    inclusion_wave=="Wave 4" ~ r4height,
+    inclusion_wave=="Wave 5" ~ r5height,
+    TRUE~ r6height),
+  rweight=case_when(
+    inclusion_wave=="Wave 1" ~ r1weight,
+    inclusion_wave=="Wave 2" ~ r2weight,
+    inclusion_wave=="Wave 3" ~ r3weight,
+    inclusion_wave=="Wave 4" ~ r4weight,
+    inclusion_wave=="Wave 5" ~ r5weight,
+    TRUE~ r6weight))
+
+#Create variable of any chronic conditions 
+hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(
+  rchrondis = case_when(
+    # Check if any variable = 1 (no NA in this row for the 1s check)
+    inclusion_wave=="Wave 1" & if_any(c(r1hibpe, r1diabe, r1cancre, r1respe, r1hrtatte, r1stroke), ~ .x == 1) ~ 1,
+    # Check if all variables = 0 (no NA in this row for the 0s check)
+    inclusion_wave=="Wave 1" & if_all(c(r1hibpe, r1diabe, r1cancre, r1respe, r1hrtatte, r1stroke),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 2" & if_any(c(r2hibpe, r2diabe, r2cancre, r2respe, r2hrtatte, r2stroke), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 2" & if_all(c(r2hibpe, r2diabe, r2cancre, r2respe, r2hrtatte, r2stroke),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 3" & if_any(c(r3hibpe, r3diabe, r3cancre, r3respe, r3hrtatte, r3stroke), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 3" & if_all(c(r3hibpe, r3diabe, r3cancre, r3respe, r3hrtatte, r3stroke),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 4" & if_any(c(r4hibpe, r4diabe, r4cancre, r4respe, r4hrtatte, r4stroke), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 4" & if_all(c(r4hibpe, r4diabe, r4cancre, r4respe, r4hrtatte, r4stroke),  ~ .x == 0) ~ 0,
+    inclusion_wave=="Wave 5" & if_any(c(r5hibpe, r5diabe, r5cancre, r5respe, r5hrtatte, r5stroke), ~ .x == 1) ~ 1,
+    inclusion_wave=="Wave 5" & if_all(c(r5hibpe, r5diabe, r5cancre, r5respe, r5hrtatte, r5stroke),  ~ .x == 0) ~ 0,
+    # Otherwise NA
+    TRUE ~ NA_real_))
+
+#Check frequency of archrondis
+table(hmhas_all_sp23$rchrondis, exclude=NULL) #280 NAs
+qc <- hmhas_all_sp23 %>% filter(is.na(rchrondis)) %>% select(rchrondis, r1hibpe, r1diabe, r1cancre, r1respe, r1hrtatte, r1stroke,r2hibpe, r2diabe, r2cancre, r2respe, r2hrtatte, r2stroke, r3hibpe, r3diabe, r3cancre, r3respe, r3hrtatte, r3stroke,r4hibpe, r4diabe, r4cancre, r4respe, r4hrtatte, r4stroke, r5hibpe, r5diabe, r5cancre, r5respe, r5hrtatte, r5stroke)
 ######################################################
 ##Define covariates at inclusion for the paired spouses
 ######################################################
@@ -2070,10 +2232,62 @@ hmhas_all_sp23 <- hmhas_all_sp23 %>%
     sclstress = ifelse(person_num == 1, rclstress[2], rclstress[1])) %>%
   ungroup()
 
-#Define household income=ritearn+sitearn+hitcap+ripen+sipen+rigxfr+sigxfr+hiothhh
+#Define household income=ritearn+sitearn+hitcap+ripen+sipen+rigxfr+sigxfr+ritothr+sitothr
 hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(hincome=case_when(
   !is.na(ritearn) & !is.na(sitearn) & !is.na(hitcap) & !is.na(ripen) & !is.na(sipen) & !is.na(rigxfr) & !is.na(sigxfr) & !is.na(ritothr) & !is.na(sitothr) ~ ritearn+sitearn+hitcap+ripen+sipen+rigxfr+sigxfr+ritothr+sitothr,
   TRUE ~ NA))
+
+#Load occupation variables
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+hmhas_occup <- read_dta("hmhas_occup.dta")
+
+#Add occupation variables
+hmhas_all_sp23 <- hmhas_all_sp23 %>% left_join(.,hmhas_occup,by="unhhidnp")
+
+#Recode occupation classification rwjlocc_m
+hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(
+  roccup2=case_when(
+    inclusion_wave=="Wave 1" ~ r1jlocc_m.y,
+    inclusion_wave=="Wave 2" ~ r2jlocc_m.y,
+    inclusion_wave=="Wave 3" ~ r3jlocc_m.y,
+    inclusion_wave=="Wave 4" ~ r4jlocc_m.y,
+    TRUE~ r5jlocc_m.y))
+
+hmhas_all_sp23 <- hmhas_all_sp23 %>% mutate(
+  roccup2_2=case_when(
+    roccup2==5 | roccup2==7 | roccup2==12 ~ 1, #1.Legislator, Senior Official or Manager
+    roccup2==1 | roccup2==3 ~ 2, #2.Professional
+    roccup2==2 | roccup2==4 | roccup2==18 ~ 3, #3.Technician or Associate Professional
+    roccup2==13 ~ 4, #4.Clerk
+    roccup2==14 | roccup2==15 | roccup2==16 | roccup2==17 | roccup2==18 ~ 5, #5.Service Worker and Shop and Market Sales Worker
+    roccup2==6 ~ 6, #6.Skilled Agricultural or Fishery Worker
+    roccup2==8 ~ 7, #7.Craft and Related Trades Worker
+    roccup2==9 | roccup2==11 ~ 8, #8.Plant and Machine Operator or Assembler
+    roccup2==10 | roccup2==16 | roccup2==19 ~ 9, #9.Elementary Occupation
+    roccup2==444 ~ 10, #Unemployed
+    roccup2==777 | roccup2==666 | roccup2==999 | roccup2==NA ~ NA_real_)) #Missing 
+
+hmhas_all_sp23 <- hmhas_all_sp23 %>%
+  group_by(householdID) %>%
+  filter(n() == 2) %>%  # Only keep complete pairs
+  mutate(
+    person_num = row_number(),
+    soccup2 = ifelse(person_num == 1, roccup2[2], roccup2[1]),
+    soccup2_2 = ifelse(person_num == 1, roccup2_2[2], roccup2_2[1])) %>% ungroup()
+    
+#Check frequency of roccup2_2
+table(hmhas_all_sp23$roccup2_2, exclude=NULL)
+
+#Define weight and height variables for paired spouses
+hmhas_all_sp23 <- hmhas_all_sp23 %>%
+  group_by(householdID) %>%
+  filter(n() == 2) %>%  # Only keep complete pairs
+  mutate(
+    person_num = row_number(),
+    sheight = if_else(person_num == 1, rheight[2], rheight[1]),
+    sweight = if_else(person_num == 1, rweight[2], rweight[1]),
+    schrondis = if_else(person_num == 1, rchrondis[2], rchrondis[1])) %>%
+  ungroup()
 
 ##Check potential misdefined variables
 #Age at interview
@@ -2124,7 +2338,241 @@ qc <- hmhas_all_sp23 %>% filter(is.na(rclstress)) %>% select(unhhidnp,householdI
 qc$missing_count <- rowSums(is.na(qc))
 table(qc$missing_count, exclude=NULL) #The lowest count should be 1. Passed QC
 
-#Save dataset hshare_all_sp25
+#Save dataset hmhas_all_sp23
 setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
 save(hmhas_all_sp23, file = "hmhas_all_sp23.rda")
 ######################################################
+#3. Multiple imputation for covariates with missing proportion  5% < x < 40% (hmhas_all_sp24) 
+###################################################### 
+#Load data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+load("hmhas_all_sp24.rda")
+
+#Create new disease variables for imputation
+hmhas_all_sp24 <- hmhas_all_sp24 %>% mutate(
+  arthre2=case_when(
+    inclusion_wave=="Wave 1" ~ r1arthre,
+    inclusion_wave=="Wave 2" ~ r2arthre,
+    inclusion_wave=="Wave 3" ~ r3arthre,
+    inclusion_wave=="Wave 4" ~ r4arthre,
+    TRUE ~ r5arthre),
+  hibpe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1hibpe,
+    inclusion_wave=="Wave 2" ~ r2hibpe,
+    inclusion_wave=="Wave 3" ~ r3hibpe,
+    inclusion_wave=="Wave 4" ~ r4hibpe,
+    TRUE ~ r5hibpe),
+  diabe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1diabe,
+    inclusion_wave=="Wave 2" ~ r2diabe,
+    inclusion_wave=="Wave 3" ~ r3diabe,
+    inclusion_wave=="Wave 4" ~ r4diabe,
+    TRUE ~ r5diabe),
+  cancre2=case_when(
+    inclusion_wave=="Wave 1" ~ r1cancre,
+    inclusion_wave=="Wave 2" ~ r2cancre,
+    inclusion_wave=="Wave 3" ~ r3cancre,
+    inclusion_wave=="Wave 4" ~ r4cancre,
+    TRUE ~ r5cancre),
+  respe2=case_when(
+    inclusion_wave=="Wave 1" ~ r1respe,
+    inclusion_wave=="Wave 2" ~ r2respe,
+    inclusion_wave=="Wave 3" ~ r3respe,
+    inclusion_wave=="Wave 4" ~ r4respe,
+    TRUE ~ r5respe),
+  hrtatte2=case_when(
+    inclusion_wave=="Wave 1" ~ r1hrtatte,
+    inclusion_wave=="Wave 2" ~ r2hrtatte,
+    inclusion_wave=="Wave 3" ~ r3hrtatte,
+    inclusion_wave=="Wave 4" ~ r4hrtatte,
+    TRUE ~ r5hrtatte),
+  stroke2=case_when(
+    inclusion_wave=="Wave 1" ~ r1stroke,
+    inclusion_wave=="Wave 2" ~ r2stroke,
+    inclusion_wave=="Wave 3" ~ r3stroke,
+    inclusion_wave=="Wave 4" ~ r4stroke,
+    TRUE ~ r5stroke))
+
+#Select relevant variables
+hmhas_miss <- hmhas_all_sp24 %>% dplyr::select(unhhidnp, rage, rabyear, ragender, hrural2, rameduc_m, rafeduc_m, rclstress, raeducl, rpactvg, rdrinkr, rdrinkb, rbinged, rsmokev, roccup, roccup2_2, rheight,rweight,rbmin, hitot, hkcnt, arthre2, hibpe2, diabe2, cancre2, respe2, hrtatte2, stroke2, rshlt, radlfive, riadlfour, rmobilsev, arthritis, arthritis_dm, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, respe, respe_dm, hrtatte, hrtatte_dm, stroke, stroke_dm) %>% 
+  mutate(across(c(rage, rabyear, rdrinkr,rbinged, rheight, rweight, rbmin, hitot), as.numeric)) %>%
+  mutate(across(c(ragender, hrural2, rameduc_m, rafeduc_m, rclstress, raeducl, rpactvg, rdrinkb, rsmokev, roccup, roccup2_2, hkcnt, arthre2, hibpe2, diabe2, cancre2, respe2, hrtatte2, stroke2, rshlt, radlfive, riadlfour, rmobilsev, arthritis, arthritis_dm, hibpe, hibpe_dm, diabe, diabe_dm, cancre, cancre_dm, respe, respe_dm, hrtatte, hrtatte_dm, stroke, stroke_dm), as.factor))
+
+#Define ordered variables 
+hmhas_miss$raeducl <- ordered(hmhas_miss$raeducl, levels = c("1", "2", "3"))
+hmhas_miss$rameduc_m <- ordered(hmhas_miss$rameduc_m, levels = c("1", "2", "3","4"))
+hmhas_miss$rafeduc_m <- ordered(hmhas_miss$rafeduc_m, levels = c("1", "2", "3","4"))
+hmhas_miss$rshlt <- ordered(hmhas_miss$rshlt, levels = c("1", "2", "3","4","5"))
+hmhas_miss$radlfive <- ordered(hmhas_miss$radlfive, levels = c("0", "1", "2","3","4", "5"))
+hmhas_miss$riadlfour <- ordered(hmhas_miss$riadlfour, levels = c("0", "1", "2","3","4"))
+hmhas_miss$rmobilsev <- ordered(hmhas_miss$rmobilsev, levels = c("0", "1", "2","3","4", "5", "6","7"))
+
+#Create the mids object containing the defacult setting
+ini <- mice(hmhas_miss, max=0, print=FALSE)
+ini$loggedEvents #Collinearity warning 
+
+#Extract meth data and revise accordingly
+meth <- ini$meth #modelling methods
+##Modelling
+#Numeric variables: Predictive mean matching 
+#Factor with 2 levels: Logistic regression 
+#Factor with > 2 levels: Multinomial logit model
+#Ordinal variables: Ordered logit model
+#Change several variables simultaneously
+meth_var_to_change <- c("rabyear","arthritis", "arthritis_dm", "hibpe", "hibpe_dm", "diabe", "diabe_dm", "cancre", "cancre_dm", "respe", "respe_dm", "hrtatte", "hrtatte_dm", "stroke", "stroke_dm")
+meth[meth_var_to_change] <- ""
+#Compute BMI using rheight and rweight
+meth["rbmin"] <- "~I(pmin(pmax(rweight/((rheight)^2),12),60))"
+
+#Extract prediction matrix
+pred <- ini$pred #prediction matrix
+quickpred <- quickpred(hmhas_miss) #take absolute correlation with the target or with the response indicator of at least 0.1 
+##Update prediction matrix: wave-specific prediction 
+#Include rage and ragender in all prediction sets
+quickpred[,c("rage","ragender")] <- 1
+#Remove unhhidnp, rage, and ragender from imputation
+quickpred[c("unhhidnp","rage","rabyear","ragender"),c("unhhidnp","rage","rabyear","ragender")] <- 0
+#Remove BMI from predicting height and weight
+quickpred[c("rheight","rweight"),"rbmin"] <- 0
+#Remove newly defined disease variables from predictor sets and from prediction
+quickpred[,c("unhhidnp","rabyear","arthritis", "arthritis_dm", "hibpe", "hibpe_dm", "diabe", "diabe_dm", "cancre", "cancre_dm", "respe", "respe_dm", "hrtatte", "hrtatte_dm", "stroke", "stroke_dm")] <- 0
+quickpred[c("unhhidnp","rabyear","arthritis", "arthritis_dm", "hibpe", "hibpe_dm", "diabe", "diabe_dm", "cancre", "cancre_dm", "respe", "respe_dm", "hrtatte", "hrtatte_dm", "stroke", "stroke_dm"),] <- 0
+
+#Save quickpred
+quickpred_df <- as.data.frame(quickpred)
+quickpred_df$Variable <- rownames(quickpred)
+quickpred_df <- quickpred_df[, c("Variable", setdiff(names(quickpred_df), "Variable"))]
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Descriptive data/MHAS')
+write.csv(quickpred_df, "mhas_imp_quickpred.csv", row.names = FALSE)
+
+#Multiple imputation
+hmhas_imp <- mice(hmhas_miss, m=5, meth=meth, pred=quickpred, include=c("rage","ragender"), maxit=20, print=FALSE, seed=9876)
+#Warning message:
+#In eval(family$initialize) : non-integer #successes in a binomial glm!
+#Double check all binary variables are probably coded as 0/1, thus could be the issue of prefect prediction/rare events
+
+##Diagnostics
+#Whether imputed values are plausible 
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rameduc_m"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rafeduc_m"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rclstress"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["raeducl"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rpactvg"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rdrinkr"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rdrinkb"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbinged"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rsmokev"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["roccup2_2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rheight"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rheight"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rheight"]][["3"]]), exclude=NULL) #1 value with height <1
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rheight"]][["4"]]), exclude=NULL) #2 value with height <1
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rheight"]][["5"]]), exclude=NULL) #2 value with height <1
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rweight"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rweight"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rweight"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rweight"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rweight"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbmin"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbmin"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbmin"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbmin"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rbmin"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hitot"]][["1"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hitot"]][["2"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hitot"]][["3"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hitot"]][["4"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hitot"]][["5"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["hkcnt"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rshlt"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["radlfive"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["riadlfour"]]), exclude=NULL) #Pass QC
+qc <- as.data.frame(table(hmhas_imp[["imp"]][["rmobilsev"]]), exclude=NULL) #Pass QC
+
+#Check model convergence
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Output/Graphs')
+tiff("hmhas_imp_convergence.tiff", width = 16, height = 16, units = "in", res = 300)
+plot(hmhas_imp,layout=c(8,8))
+dev.off()
+
+#Check distributions of original and imputed data
+xyplot(hmhas_imp, rweight ~ rheight | .imp, pch = 20, cex = 1.4)
+xyplot(hmhas_imp, rheight ~ rbmin | .imp, pch = 20, cex = 1.4)
+xyplot(hmhas_imp, rbmin ~ rshlt | .imp, pch = 20, cex = 1.4)
+xyplot(hmhas_imp, rpactvg ~ rbmin | .imp, pch = 20)
+xyplot(hmhas_imp, riadlfour ~ radlfive | .imp, pch = 20)
+xyplot(hmhas_imp, rameduc_m ~ rdrinkr | .imp, pch = 20)
+xyplot(hmhas_imp, rshlt ~ rclstress | .imp, pch = 20)
+
+#Extracts imputed data (five imputations)
+hmhas_imp_all_long <- complete(hmhas_imp,"long", include = TRUE)
+###################################################### 
+#4. Post imputation modifications (hmhas_all_sp24 and hmhas_imp_all_long)
+###################################################### 
+#Load data
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+load("hmhas_all_sp24.rda")
+
+#Extract rchondis from hmhas_all_sp23 and add to the five imputed datasets
+var <- hmhas_all_sp24 %>% select(unhhidnp, householdID, rchrondis)
+hmhas_imp_all_long <- hmhas_imp_all_long %>% left_join(., var, by = "unhhidnp")
+
+#Create categorical BMI
+hmhas_imp_all_long <- hmhas_imp_all_long %>% mutate(
+  rbmicat = case_when(
+    rbmin <= 18.5 ~ 1,
+    rbmin > 18.5 & rbmin < 25 ~ 2,
+    rbmin >= 25 & rbmin < 30 ~ 3,
+    rbmin >= 30 & rbmin < 35 ~ 4,
+    rbmin >= 35 & rbmin < 40 ~ 5,
+    rbmin >= 40  ~ 6))
+
+#Define spousal variables
+hmhas_imp_all_long <- hmhas_imp_all_long %>%
+  group_by(.imp, householdID) %>%
+  filter(n() == 2) %>%
+  arrange(.imp, householdID, unhhidnp) %>% 
+  mutate(
+    person_num = row_number(),
+    sbyear = if_else(person_num == 1, lead(rabyear), lag(rabyear)),
+    sage = if_else(person_num == 1, lead(rage), lag(rage)),
+    sgender = if_else(person_num == 1, lead(ragender), lag(ragender)),  
+    seducl = if_else(person_num == 1, lead(raeducl), lag(raeducl)),
+    sshlt = if_else(person_num == 1, lead(rshlt), lag(rshlt)),
+    sadlfive = if_else(person_num == 1, lead(radlfive), lag(radlfive)),
+    siadlfour = if_else(person_num == 1, lead(riadlfour), lag(riadlfour)),
+    smobilsev = if_else(person_num == 1, lead(rmobilsev), lag(rmobilsev)),
+    spactvg = if_else(person_num == 1, lead(rpactvg), lag(rpactvg)),
+    sdrinkb = if_else(person_num == 1, lead(rdrinkb), lag(rdrinkb)),
+    sdrinkr = if_else(person_num == 1, lead(rdrinkr), lag(rdrinkr)),
+    sbinged = if_else(person_num == 1, lead(rbinged), lag(rbinged)),
+    ssmokev = if_else(person_num == 1, lead(rsmokev), lag(rsmokev)),
+    smomeducl = if_else(person_num == 1, lead(rameduc_m), lag(rameduc_m)),
+    sdadeducl = if_else(person_num == 1, lead(rafeduc_m), lag(rafeduc_m)),
+    soccup = if_else(person_num == 1, lead(roccup), lag(roccup)),
+    soccup2_2 = if_else(person_num == 1, lead(roccup2_2), lag(roccup2_2)),
+    sbmin = if_else(person_num == 1, lead(rbmin), lag(rbmin)),
+    sbmicat = if_else(person_num == 1, lead(rbmicat), lag(rbmicat)),
+    sclstress = if_else(person_num == 1, lead(rclstress), lag(rclstress)),
+    schrondis = if_else(person_num == 1, lead(rchrondis), lag(rchrondis)),
+    sarthritis = if_else(person_num == 1, lead(arthritis), lag(arthritis)),
+    shibpe = if_else(person_num == 1, lead(hibpe), lag(hibpe)),
+    sdiabe = if_else(person_num == 1, lead(diabe), lag(diabe)),  
+    scancre = if_else(person_num == 1, lead(cancre), lag(cancre)),
+    srespe = if_else(person_num == 1, lead(respe), lag(respe)),
+    shrtatte = if_else(person_num == 1, lead(hrtatte), lag(hrtatte)),
+    sstroke = if_else(person_num == 1, lead(stroke), lag(stroke)),
+    sarthritis_dm = if_else(person_num == 1, lead(arthritis_dm), lag(arthritis_dm)),
+    shibpe_dm = if_else(person_num == 1, lead(hibpe_dm), lag(hibpe_dm)),
+    sdiabe_dm = if_else(person_num == 1, lead(diabe_dm), lag(diabe_dm)), 
+    scancre_dm = if_else(person_num == 1, lead(cancre_dm), lag(cancre_dm)),
+    srespe_dm = if_else(person_num == 1, lead(respe_dm), lag(respe_dm)),
+    shrtatte_dm = if_else(person_num == 1, lead(hrtatte_dm), lag(hrtatte_dm)),
+    sstroke_dm = if_else(person_num == 1, lead(stroke_dm), lag(stroke_dm))) %>%
+  ungroup()
+
+
+#Save dataset hmhas_imp_all_long
+setwd('/Users/wengianche/Documents/UM MACAO FELLOW/Projects/Spousal aggregation of arthritis/Manuscript 1/Data/MHAS')
+saveRDS(hmhas_imp_all_long, file = "hmhas_imp_all_long.rds")
+###################################################### 
