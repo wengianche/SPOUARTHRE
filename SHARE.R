@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251021
-#UPDATED: 20251127
+#UPDATED: 20251128
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE SHARE 2004-2022 wave (1-2,4-9), version G, DATA STRUCTURE, DATA PREPARATION
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -3398,6 +3398,10 @@ qc <- hshare_all_sp25 %>% filter((inclusion_wave=="Wave 1" & rsmokev != r1smokev
 qc <- hshare_all_sp25 %>% filter(is.na(hincome_max)) %>% select("mergeid","householdID","inclusion_wave", "ritearn", "sitearn", "hitcap", "ripripen", "sipripen","ripubpen", "sipubpen","rigxfr", "sigxfr", "ritothr", "sitothr","hincome_max","hincome_min") #68 missing values
 qc$missing_count <- rowSums(is.na(qc))
 table(qc$missing_count, exclude=NULL) #The lowest count should be 1. Passed QC
+qc <- hshare_all_sp26 %>% mutate(hincome_dif=hincome_max-hincome_min) %>% select(mergeid, hincome_max, hincome_min, hincome_dif)
+qc2 <- as.data.frame(table(qc$hincome_dif, exclude=NULL))
+summary(qc$hincome_dif)
+#Use hincome_max in the analysis
 #Weekly contact with children in person/by phone/email
 qc <- hshare_all_sp25 %>% filter((inclusion_wave=="Wave 1" & hkcnt != h1kcnt) | (inclusion_wave=="Wave 2" & hkcnt != h2kcnt)| (inclusion_wave=="Wave 4" & hkcnt != h4kcnt)) #None
 #Occupation

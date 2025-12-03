@@ -1,7 +1,7 @@
 #Project - SPOUSAL AGGREGATION OF ARTHRITIS AND COAGGREGATION OF OTHER CHRONIC COMORBIDITIES 
 #BASED ON ANALYSIS PLAN_VERSION X CREATED BY PI WENG IAN CHE
 #CREATED: 20251002
-#UPDATED: 20251127
+#UPDATED: 20251202
 #ANALYST: WENG IAN CHE
 #PURPOSE OF THIS SYNTAX: EXPLORE KLoSA 2006-2022 wave (1-9) DATA STRUCTURE, DATA PREPARATION
 #R VERSION: version 4.4.3 (2025-02-28)
@@ -11,6 +11,7 @@
   
 #Logbook
 ######################################################  
+#20251202 Add back srural in hklosa_all_sp22
 ######################################################
 
 #Things to pay attention
@@ -2433,7 +2434,8 @@ hklosa_all_sp22 <- hklosa_all_sp22 %>%
     person_num = row_number(),
     sbyear = ifelse(person_num == 1, rabyear[2], rabyear[1]),
     sage = ifelse(person_num == 1, rage[2], rage[1]),
-    sgender = ifelse(person_num == 1, ragender[2], ragender[1]),  
+    sgender = ifelse(person_num == 1, ragender[2], ragender[1]),
+    srural = ifelse(person_num == 1, rrural[2], rrural[1]),
     seducl = ifelse(person_num == 1, raeducl[2], raeducl[1]),
     srelig = ifelse(person_num == 1, rrelig[2], rrelig[1]),
     sshlt = ifelse(person_num == 1, rshlt[2], rshlt[1]),
@@ -2467,6 +2469,19 @@ hklosa_all_sp22 <- hklosa_all_sp22 %>% mutate(hincome=case_when(
   hincome2=case_when(
   !is.na(ritot) & !is.na(sitot) ~ ritot+sitot,
   TRUE ~ NA))
+
+#Check for inconsistencies in household variables
+inconsistent_households <- hklosa_all_sp22 %>%
+  group_by(householdID) %>%
+  summarise(
+    across(c(rrural, srural, rkcnt), 
+           ~ length(unique(.)) > 1,  # Returns TRUE if more than one unique value
+           .names = "{.col}_inconsistent"
+    )
+  ) %>%
+  filter(if_any(ends_with("_inconsistent"), ~ .))  # Keep only households with any inconsistency
+#Respondent and spousal living area variables are consistent within spousal pairs
+#rkcnt has 174 inconsistent observations
 
 #Define occupation variables among paired spouses
 hklosa_all_sp22 <- hklosa_all_sp22 %>%
